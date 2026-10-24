@@ -150,7 +150,7 @@ struct ProgressScreen: View {
                 }
                 .buttonStyle(.secondary(minHeight: 54))
             }
-            .disabled(log.isEmpty || exporting)
+            .disabled((log.isEmpty && log.doses.isEmpty) || exporting)
         }
     }
 }

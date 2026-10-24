@@ -15,6 +15,7 @@ struct TremorSession: View {
     @State private var hand: Hand = .right
     @State private var recorder = MotionRecorder()
     @State private var result: TremorResult?
+    @State private var sessionTask: Task<Void, Never>?
 
     var body: some View {
         switch phase {
@@ -96,15 +97,21 @@ struct TremorSession: View {
             Spacer(minLength: 0)
         }
         .padding(.top, Theme.Space.s3)
-        .onDisappear { recorder.stop() }
+        .onDisappear {
+            sessionTask?.cancel()
+            recorder.stop()
+        }
     }
 
     private func begin() {
-        Task {
+        sessionTask?.cancel()
+        sessionTask = Task {
             for n in stride(from: 3, through: 1, by: -1) {
+                guard !Task.isCancelled else { return }
                 withAnimation(.snappy) { phase = .countdown(n) }
-                try? await Task.sleep(for: .seconds(1))
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
             }
+            guard !Task.isCancelled else { return }
             phase = .recording
             recorder.start(simulated: model.simulateTremor, posture: posture) {
                 let r = TremorAnalysis.analyze(x: recorder.x, y: recorder.y, z: recorder.z, posture: posture)
@@ -206,6 +213,7 @@ struct VoiceSession: View {
     @State private var meter = VoiceMeter()
     @State private var result: VoiceResult?
     @State private var trace: [Double] = []
+    @State private var sessionTask: Task<Void, Never>?
 
     var body: some View {
         if phase == .result, let result {
@@ -283,7 +291,10 @@ struct VoiceSession: View {
 
             Group {
                 if phase == .ready {
-                    Button { Task { await begin() } } label: { Label("Start", systemImage: "mic.fill") }
+                    Button {
+                        sessionTask?.cancel()
+                        sessionTask = Task { await begin() }
+                    } label: { Label("Start", systemImage: "mic.fill") }
                         .buttonStyle(.primary(tint: Theme.voiceColor))
                 } else if phase == .denied {
                     Button("Open Settings") {
@@ -291,32 +302,48 @@ struct VoiceSession: View {
                     }
                     .buttonStyle(.primary(tint: Theme.voiceColor))
                 }
+                if model.simulateTremor {
+                    Text("Sample voice reading. No microphone measurement is being taken.")
+                        .font(Theme.font(.footnote))
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(.horizontal, Theme.Space.s5)
             .padding(.bottom, Theme.Space.s4)
         }
         .padding(.top, Theme.Space.s3)
         .sensoryFeedback(.impact(weight: .medium), trigger: inZone) { _, new in new }
-        .onDisappear { meter.stop() }
+        .onDisappear {
+            sessionTask?.cancel()
+            meter.stop()
+        }
     }
 
     private func begin() async {
         let simulated = model.simulateTremor
         if !simulated, !(await VoiceMeter.requestPermission()) {
+            guard !Task.isCancelled else { return }
             phase = .denied
             return
         }
         for n in stride(from: 3, through: 1, by: -1) {
+            guard !Task.isCancelled else { return }
             withAnimation(.snappy) { phase = .countdown(n) }
-            try? await Task.sleep(for: .seconds(1))
+            do { try await Task.sleep(for: .seconds(1)) } catch { return }
         }
+        guard !Task.isCancelled else { return }
         phase = .listening
-        meter.start(simulated: simulated) {
+        let started = meter.start(simulated: simulated) {
             trace = meter.levels
             let r = VoiceAnalysis.analyze(meter.levels, interval: VoiceMeter.interval)
             model.activity.add(VoiceRecord(date: .now, result: r))
             result = r
             withAnimation(.smooth(duration: 0.35)) { phase = .result }
+        }
+        if !started {
+            phase = .ready
+            model.notice = "The microphone couldn’t start. No reading was saved. Close other apps using the microphone, then try again."
         }
     }
 

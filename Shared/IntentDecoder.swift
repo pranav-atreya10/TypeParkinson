@@ -67,6 +67,12 @@ final class IntentDecoder {
         #endif
     }
 
+    /// Cached dictionary decisions can contain words from the current typing session.
+    /// Keep the numerical touch model, but discard those words when the keyboard closes.
+    func clearTransientText() {
+        validity.removeAll()
+    }
+
     /// The letter keys' centres in a layout.
     static func keyCenters(_ layout: KeyboardLayout) -> [Character: CGPoint] {
         var centers: [Character: CGPoint] = [:]

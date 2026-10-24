@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TypeParkinson — A keyboard that learns your hands</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0a0f1f;color:white;font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif}canvas{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;width:min(100vw,177.7778vh);height:min(100vh,56.25vw)}#controls{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 16px;border:1px solid #ffffff30;border-radius:30px;background:#0a0f1fee;opacity:0;pointer-events:none}body:hover #controls,body:focus-within #controls,body.manual #controls{opacity:1;pointer-events:auto}button{background:#fff;color:#0e1424;border:0;border-radius:24px;min-height:44px;padding:0 18px;font:600 14px system-ui;cursor:pointer}button:focus-visible,input:focus-visible{outline:3px solid #2be0c8;outline-offset:4px}input{width:180px;height:44px;accent-color:#6e8eff}#time{font-size:13px;min-width:76px}#transcript{position:absolute;left:-99999px}body.capture #controls{display:none!important}@media(hover:none){#controls{opacity:1;pointer-events:auto}}@media(max-width:650px){#controls{width:calc(100% - 16px);padding:8px;gap:6px;bottom:8px}#controls input{width:auto;min-width:32px;flex:1}#time{display:none}#prev,#next,#full{padding:0;min-width:44px}#play{padding:0 12px}#full{font-size:0}#full:after{content:'⛶';font-size:22px}}</style></head><body>
+<canvas id="film" width="1920" height="1080" role="img" aria-label="TypeParkinson film: a keyboard that learns your hands. Ten scenes explain the problem, personal touch model, correction, daily practice, motion measurements, care-team reports and privacy."></canvas>
+<div id="controls" aria-label="Presentation controls"><button id="prev" aria-label="Previous scene">←</button><button id="play">Pause</button><input id="seek" type="range" min="0" max="93.999" step="0.1" value="0" aria-label="Film time"><span id="time">0:00 / 1:34</span><button id="next" aria-label="Next scene">→</button><button id="full" aria-label="Fullscreen">Fullscreen</button></div>
+<main id="transcript"><h1>TypeParkinson</h1><p>A simple message, “See you soon,” slips onto neighboring keys. For people living with Parkinson's, tremor and stiffness can make each tap harder. An estimated 1.1 million people in the US live with Parkinson's, according to the Parkinson's Foundation.</p><p>A keyboard that learns your hands. Setup measures where your touches land. A personal touch model interprets the key you intended. On-device smart correction handles neighboring keys, repeated touches, missed letters and swaps. You can undo a correction with one tap.</p><p>Check in, practise, and find your voice. Daily checks, spiral tracing, rhythm tapping, typing, tremor measurement, voice practice, Speak and medication records live in one app. Motion sensors and Fourier analysis describe shake strength and frequency. Illustrations and simulator histories are sample data, not clinical evidence.</p><p>Patterns and PDF reports support conversations with your care team. Measurements do not diagnose a condition. No servers. The keyboard never saves what you type. Optional sync uses your own iCloud.</p><p>Built by Atharv Sharma and Pranav Atreya for the Congressional App Challenge.</p><a href="https://www.parkinson.org/understanding-parkinsons/statistics">Parkinson's Foundation statistics</a></main>
+<script>
+const ASSETS=/*__ASSETS__*/{};
+const cv=document.getElementById('film'),c=cv.getContext('2d',{alpha:false});
+const W=1920,H=1080,DURATION=94,starts=[0,7,14,22,34,48,60,70,80,86];
+const C={ink:'#080D1B',bg:'#F3F4F8',text:'#0E1424',muted:'#9AA9C9',blue:'#2F5BFF',violet:'#795DFF',cyan:'#2BE0C8'};
+const display='-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif',brand='"SF Pro Rounded",ui-rounded,-apple-system,sans-serif';
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v)),mix=(a,b,p)=>a+(b-a)*p;
+const ease=v=>1-Math.pow(1-clamp(v),4),smooth=v=>{v=clamp(v);return v*v*(3-2*v)},io=v=>{v=clamp(v);return v<.5?8*v**4:1-(-2*v+2)**4/2};
+const E=(t,a,d=1)=>ease((t-a)/d),S=(t,a,d=1)=>smooth((t-a)/d);
+function rr(x,y,w,h,r,fill,stroke,lw=1){if(w<=0||h<=0)return;c.beginPath();c.roundRect(x,y,w,h,r);if(fill){c.fillStyle=fill;c.fill()}if(stroke){c.strokeStyle=stroke;c.lineWidth=lw;c.stroke()}}
+function font(size=40,weight=550,family=display){c.font=`${weight} ${size}px ${family}`;c.textBaseline='alphabetic'}
+function txt(s,x,y,size=40,color='#fff',weight=550,align='left',family=display){font(size,weight,family);c.fillStyle=color;c.textAlign=align;c.fillText(s,x,y)}
+function alpha(p,fn){c.save();c.globalAlpha*=clamp(p);fn();c.restore()}
+function line(x,y,x2,y2,color,width=2){c.beginPath();c.moveTo(x,y);c.lineTo(x2,y2);c.strokeStyle=color;c.lineWidth=width;c.stroke()}
+function dot(x,y,r,col){if(r<=0)return;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fillStyle=col;c.fill()}
+function glow(x,y,r,color,opacity=1){alpha(opacity,()=>{const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'transparent');c.fillStyle=g;c.fillRect(x-r,y-r,2*r,2*r)})}
+function headline(s,x,y,size,p=1,color='#fff',align='center',weight=720){c.save();c.beginPath();c.rect(0,y-size*1.1,W,size*1.35);c.clip();txt(s,x,y+(1-ease(p))*size*1.15,size,color,weight,align);c.restore()}
+function caption(s,y=1000,color=C.muted){txt(s,960,y,27,color,450,'center')}
+function stage(t,light=false){c.fillStyle=light?C.bg:C.ink;c.fillRect(0,0,W,H);if(light){glow(1000,500,950,'#c5d3ff',.22);return}glow(1000+Math.sin(t*.17)*160,800,850,'#173990',.32);glow(1600,230,650,'#34206f',.24)}
+function aura(t,p=1){stage(t);alpha(p,()=>{glow(500+Math.sin(t*.23)*200,660,1100,'#244dff',.65);glow(1250,560+Math.cos(t*.15)*110,820,'#6d37e6',.46);glow(1630,730,720,'#00cabb',.36);const shift=Math.sin(t*.17)*55;const g=c.createLinearGradient(220,680,1800,700);g.addColorStop(0,'#284bff00');g.addColorStop(.3,'#375bff');g.addColorStop(.6,'#886aff');g.addColorStop(.86,'#30c4d3');g.addColorStop(1,'#32e5cf00');alpha(.32,()=>{c.beginPath();c.moveTo(-150,970+shift);c.bezierCurveTo(460,330+shift,1050,1040,2090,390);c.lineTo(2090,500);c.bezierCurveTo(1050,1250,380,610,-150,1060+shift);c.closePath();c.fillStyle=g;c.fill()})})}
+function bottomFade(light=false){const g=c.createLinearGradient(0,940,0,1020);g.addColorStop(0,light?'#f3f4f800':'#080d1b00');g.addColorStop(1,light?C.bg:C.ink);c.fillStyle=g;c.fillRect(0,940,W,140)}
+function camera(x,y,s,angle,fn){c.save();c.translate(x,y);c.rotate(angle);c.scale(s,s);fn();c.restore()}
+const imgs={},videos={},ready=[];
+for(const[name,src]of Object.entries(ASSETS)){if(src.startsWith('data:video')){const v=document.createElement('video');v.muted=true;v.playsInline=true;v.preload='auto';v.src=src;videos[name]=v;ready.push(new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=rej}));v.load()}else{const im=new Image();im.src=src;imgs[name]=im;ready.push(im.decode())}}
+function media(n){return videos[n]?.readyState>=2?videos[n]:imgs[n]}
+// The simulator screen remains intact. Lighting, chassis and camera belong to the film.
+function device(name,x,y,h=900,roll=0,yaw=0,opacity=1){const im=media(name);if(!im)return;alpha(opacity,()=>{c.save();c.translate(x,y);c.rotate(roll);c.transform(Math.cos(yaw),Math.sin(yaw)*.15,Math.sin(yaw)*.12,1,0,0);const w=h*1206/2622,r=h*.065,b=h*.012;
+ c.shadowColor='#00000055';c.shadowBlur=54;c.shadowOffsetY=35;
+ const edge=c.createLinearGradient(-w/2,0,w/2,0);edge.addColorStop(0,'#98a3b7');edge.addColorStop(.04,'#2d3547');edge.addColorStop(.46,'#151d2c');edge.addColorStop(.97,'#abb5c7');edge.addColorStop(1,'#343e53');
+ rr(-w/2-b,-h/2-b,w+2*b,h+2*b,r+9,edge,'#bac5df66',1.5);c.shadowColor='transparent';rr(-w/2-3,-h/2-3,w+6,h+6,r+2,'#000');
+ rr(-w/2-b-4,-h*.28,4,h*.065,2,'#727d92');rr(-w/2-b-4,-h*.18,4,h*.065,2,'#727d92');rr(w/2+b,-h*.23,4,h*.12,2,'#727d92');
+ c.save();c.beginPath();c.roundRect(-w/2,-h/2,w,h,r);c.clip();c.drawImage(im,-w/2,-h/2,w,h);const sh=c.createLinearGradient(-w/2,-h/2,w/2,h/2);sh.addColorStop(0,'#ffffff12');sh.addColorStop(.35,'#ffffff00');sh.addColorStop(.85,'#ffffff00');sh.addColorStop(1,'#ffffff09');c.fillStyle=sh;c.fillRect(-w/2,-h/2,w,h);c.restore();c.restore()})}
+function key(s,x,y,w=144,h=142,energy=0,light=false){c.save();c.translate(x,y+energy*7);const down=12-energy*7;rr(0,down,w,h,22,light?'#c0c6d4':'#080d18');const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,energy>0?'#4e79ff':light?'#ffffff':'#26334d');g.addColorStop(1,energy>0?'#2448e6':light?'#e9edf5':'#151e31');rr(0,0,w,h,22,g,energy>0?'#a7c2ff':light?'#fff':'#8395b644',1.5);line(22,2,w-22,2,energy>0?'#bad0ff':'#ffffff25',1);txt(s,w/2,h*.67,h*.45,light&&energy===0?C.text:'#fff',550,'center');c.restore()}
+function board(t,{scale=1,x=960,y=750,roll=-.08,active='',light=false}={}){camera(x,y,scale,roll,()=>{c.transform(1,.03,-.29,.69,0,0);const rows=['qwertyuiop','asdfghjkl','zxcvbnm'];rows.forEach((row,j)=>{const w=row.length*142+(row.length-1)*16;[...row].forEach((s,i)=>key(s,-w/2+i*158,(j-1)*164,142,142,active===s?1:0,light))});key('space',-400,328,800,112,active===' '?1:0,light)})}
+let seed=7319;function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}function normal(){return Math.sqrt(-2*Math.log(Math.max(.0001,rand())))*Math.cos(2*Math.PI*rand())}
+const touches=Array.from({length:48},()=>({x:normal()*54+61,y:normal()*39+48,t:rand()*4.4,r:3+rand()*3}));
+function ripple(x,y,p,color=C.cyan,r=100){if(p<=0||p>=1)return;alpha(1-p,()=>{c.beginPath();c.arc(x,y,12+ease(p)*r,0,Math.PI*2);c.lineWidth=3;c.strokeStyle=color;c.stroke()})}
+function measure(s,size){font(size,680);return c.measureText(s).width}
+function glyphPositions(s,size){font(size,680);let x=-c.measureText(s).width/2;return [...s].map(ch=>{let p=x;x+=c.measureText(ch).width;return p})}
+function morphWord(from,to,p,x,y,size,color='#fff'){p=io(p);const a=glyphPositions(from,size),b=glyphPositions(to,size),used=new Set(),pairs=[];[...from].forEach((ch,i)=>{let match=-1,dist=Infinity;[...to].forEach((v,j)=>{if(ch===v&&!used.has(j)&&Math.abs(i-j)<dist){dist=Math.abs(i-j);match=j}});if(match>=0)used.add(match);pairs.push(match)});c.save();c.translate(x,y);[...from].forEach((ch,i)=>{const j=pairs[i];if(j>=0)txt(ch,mix(a[i],b[j],p),0,size,color,680);else alpha(1-p,()=>txt(ch,a[i],-p*size*.32,size,C.muted,680))});[...to].forEach((ch,j)=>{if(!used.has(j))alpha(p,()=>txt(ch,b[j],(1-p)*size*.32,size,C.cyan,680))});c.restore()}
+function scene0(t){stage(t);const pull=S(t,2.7,3.4);board(t,{x:960+Math.sin(t)*8,y:mix(1150,820,pull),scale:mix(1.95,1.1,pull),roll:mix(-.18,-.04,pull),active:t>3.1&&t<4.2?'p':''});
+ const phrase='See you soon.',wrong='See ypu soom.',n=Math.min(phrase.length,Math.floor(Math.max(0,t-.35)*9));font(120,680);const all=measure(phrase,120);let x=960-all/2;
+ for(let i=0;i<n;i++){const drift=t>3.2&&phrase[i]!==wrong[i];const offset=drift?Math.sin(t*16+i)*2.5:0;txt(drift?wrong[i]:phrase[i],x+offset,420+(drift?Math.sin(t*21+i)*4:0),120,drift?'#a5baff':'#fff',680);x+=measure(phrase[i],120)}
+ if(t<3&&Math.floor(t*2.5)%2===0)rr(x+8,321,4,114,2,C.cyan);
+ alpha(E(t,4.4),()=>caption('You know what to say. Your hands can make it harder.',590,'#c5cfe5'));ripple(1153,733,(t-3.3)/1.5,C.blue,120)
+}
+function scene1(t){stage(t);const p=E(t,0,1.1);headline('Parkinson’s can make',960,320,93,p);headline('every tap harder.',960,435,109,E(t,.35,1.1));
+ const open=E(t,1.5,1.4);camera(960,690,mix(.7,1,open),0,()=>{alpha(open,()=>{txt('1.1 million',0,0,150,'#8ba9ff',720,'center');txt('Americans live with Parkinson’s.',0,76,39,'#d4ddf0',450,'center')})});
+ alpha(E(t,2.2),()=>caption('Parkinson’s Foundation · parkinson.org',968,'#8492b1'));
+ const z=S(t,5.6,1.4);glow(960,1450-z*300,520+z*500,'#315bff',z*.7)
+}
+function scene2(t){aura(t+14,E(t,0,1));const s=io(t/3.5);headline('TypeParkinson',960,253,139,E(t,.15,1.2),'#fff','center',740);alpha(E(t,.9),()=>txt('A keyboard that learns your hands.',960,345,43,'#dbe5ff',450,'center'));
+ const h=mix(1420,900,s),y=mix(1490,856,s);device('onboarding',960,y,h,mix(-.28,-.025,s)+Math.sin(t*.5)*.015,mix(.65,.12,s));
+ alpha(E(t,4),()=>{txt('iPhone & iPad',400,680,32,'#c2d1ff',500,'center');line(540,668,680,668,'#ffffff33',1);dot(680,668,4,'#b7ccff')});
+ alpha(E(t,4.5),()=>{txt('Made around you.',1530,830,34,'#d1e9f3',500,'center');line(1230,818,1360,818,'#ffffff33',1)})
+}
+function scene3(t){stage(t+22);const learned=S(t,6.8,1.6);headline(t<7?'Your touch has a pattern.':'The keyboard learns it.',960,200,90,E(t<7?t:t-7,0,.8));
+ const zoom=mix(1.18,1.02,E(t,0,2));camera(985,579,zoom,-.025+Math.sin(t*.23)*.015,()=>{
+ ['y','u','i','g','h','j','b','n','m'].forEach((s,i)=>{const x=(i%3-1)*191-86,y=(Math.floor(i/3)-1)*191-86;key(s,x,y,172,170,i===4?learned:0)});
+ const opacity=S(t,1,2);alpha(opacity,()=>{for(let i=3;i>0;i--){alpha((.035+i*.008)*learned,()=>{c.beginPath();c.ellipse(61,48,54*i,39*i,0,0,Math.PI*2);c.fillStyle=C.cyan;c.fill()})}for(let k=1;k<=3;k++){alpha(S(t,4.4,.9)*(.65-k*.1),()=>{c.beginPath();c.ellipse(61,48,54*k,39*k,-.12,0,Math.PI*2);c.strokeStyle=learned>.5?C.cyan:'#9b8bff';c.lineWidth=1.7;c.stroke()})}});
+ touches.forEach(p=>alpha(E(t,1.1+p.t,.4),()=>dot(p.x,p.y,p.r,learned>.5?'#cefff5':'#b6a7ff')));
+ alpha(S(t,2.4),()=>{c.beginPath();c.arc(0,0,13,0,Math.PI*2);c.strokeStyle='#fff';c.lineWidth=2;c.stroke();line(-21,0,21,0,'#fff',1);line(0,-21,0,21,'#fff',1)});
+ if(t>8)ripple(61,48,((t-8)%1.7)/1.7,C.cyan,92)
+ });
+ alpha(E(t,2),()=>{txt('Where you aim',315,490,32,'#fff',550,'center');line(445,478,985,579,'#8296bc77',1)});
+ alpha(E(t,4.5),()=>{txt('Where taps land',1565,700,32,'#c0b5ff',550,'center');line(1046,627,1400,690,'#9b8bff77',1)});
+ alpha(E(t,8.4),()=>caption('A personal model of your touch offset and spread.',940,'#d6e4ff'));
+ caption('Illustrated touches. The keys stay in place.',1015,'#7e8da9')
+}
+function scene4(t){stage(t+34);const first=t<6,idx=first?0:Math.min(3,1+Math.floor((t-6)/2.65)),p=first?t:(t-6)%2.65;const pairs=[['tje','the'],['hellloo','hello'],['tomorow','tomorrow'],['teh','the']];const [raw,correct]=pairs[idx],f=S(p,first?2.8:.8,first?1.1:.85);
+ alpha(1-S(t,5.1,.6),()=>headline('A small slip.',960,204,64,E(t,0,.7),'#aabbd8','center',500));alpha(S(t,5.7,.5),()=>headline('Your intention, understood.',960,204,64,E(t,5.7,.7),'#d3def1','center',500));
+ const typed=first&&p<2.2?raw.slice(0,Math.max(0,Math.floor((p-.4)*2))):raw;
+ morphWord(typed,first&&p<2.2?typed:correct,f,960,490,first?250:190);
+ const hit=first&&p>.4&&p<2.3?raw[Math.min(2,Math.floor((p-.4)/.6))]:first&&p>=2.3&&p<3.4?' ':'';
+ board(t,{x:960,y:730,scale:.70+Math.sin(t*.12)*.015,roll:mix(-.09,.02,S(t,0,14)),active:hit});
+ if(first){alpha(S(p,3.4,.6),()=>{rr(1260,535,262,56,28,'#1b3850','#83d6c044');txt('the  ·  Undo',1391,573,25,'#b0f2df',500,'center')});ripple(960,1060,(p-2.4)/1.4,C.blue,125)}
+ caption('On-device smart correction · Illustrated examples',1025,'#9aa9c9')
+}
+function scene5(t){stage(t+48,true);headline('Built around your day.',960,173,91,E(t,0,1),C.text);const cam=705*io((t-2.7)/2.2)+705*io((t-7)/2.2);const names=['todayClip','practice','voiceClip'];
+ names.forEach((name,i)=>{const x=960+i*705-cam,dist=Math.abs(x-960)/1100;device(name,x,779+dist*35,940-dist*95,(x-960)*.000085,Math.sin((x-960)*.00055)*.3,clamp(1-dist*.35));});
+ const k=Math.round(cam/705);const words=['Check in. Adjust for today.','Spiral. Rhythm. Typing. Movement.','Practise your voice. Type to speak.'];
+ txt(words[k],960,252,35,C.text,500,'center');bottomFade(true);caption('Actual app captures · Simulator sample data',1034,'#5b6377')
+}
+function spectrum(t,x,y,w,h,m){const n=51;for(let i=0;i<n;i++){const f=i/5,amp=.025+.82*Math.exp(-(((f-5.2)/.7)**2))+.022*Math.sin(i*3)**2;const bh=amp*h*E(t,0+i*.012,1);rr(x+i*w/n,y-bh,w/n*.58,bh,5,i===26?C.cyan:'#725bff')}}
+function scene6(t){stage(t+60);const m=S(t,3.3,1.4);headline('From movement',540,240,86,E(t,0,.8));headline('to measurement.',540,345,86,E(t,.35,.8));
+ const x=130,y=675,w=875;alpha(1-m,()=>{c.beginPath();for(let i=0;i<500;i++){const xx=x+i/499*w,v=Math.sin(i*.16+t*.8)*.7+Math.sin(i*.039)*.2,yy=y+v*135*Math.sin(i/499*Math.PI);if(i===0)c.moveTo(xx,yy);else c.lineTo(xx,yy)}c.strokeStyle='#9c8bff';c.lineWidth=4;c.stroke()});
+ alpha(m,()=>{spectrum(t-3.3,x,y,w,260,m);line(x,y+13,x+w,y+13,'#8294b43d',1);txt('2',x+175,y+58,25,C.muted,450);txt('5 Hz',x+435,y+58,25,'#b0f2df',550);txt('10',x+w-25,y+58,25,C.muted,450,'right')});
+ alpha(E(t,1),()=>device('tremorClip',1455,560,835,mix(.09,-.04,S(t,0,10)),.13));
+ alpha(S(t,5,.8),()=>{txt('Motion sensors + Fourier analysis',540,835,35,'#dbe5ff',500,'center');txt('Shake strength. Shake rate.',540,890,34,C.muted,450,'center')});
+ caption('Illustrative spectrum · Simulator sample reading · A measurement, not a diagnosis.',1015,'#96a6c5')
+}
+function report(x,y,p){camera(x,y,.88,-.075+S(p,0,1)*.03,()=>{c.shadowColor='#07102430';c.shadowBlur=40;c.shadowOffsetY=18;rr(-255,-335,510,670,14,'#fff');c.shadowColor='transparent';txt('TypeParkinson',-210,-265,28,C.blue,700);txt('Your progress',-210,-205,42,C.text,650);txt('A record to share with your care team.',-210,-164,19,'#65718a',450);line(-210,-128,210,-128,'#e3e7f1');txt('Touch patterns over time',-210,-82,22,C.text,600);const vals=[.8,.72,.74,.63,.67,.56,.58,.5,.53,.43,.48,.4];c.beginPath();vals.forEach((v,i)=>{const xx=-210+i*38,yy=20+v*130;if(i===0)c.moveTo(xx,yy);else c.lineTo(xx,yy)});c.strokeStyle=C.blue;c.lineWidth=4;c.stroke();vals.forEach((v,i)=>dot(-210+i*38,20+v*130,4,C.blue));line(-210,150,210,150,'#e3e7f1');txt('Practice · Motion · Voice · Dose log',-210,200,20,'#65718a',450);txt('PDF & CSV',-210,275,25,C.blue,600);txt('Sample data',210,275,17,'#65718a',450,'right')})}
+function scene7(t){stage(t+70,true);headline('Make patterns',960,184,91,E(t,0,.8),C.text);headline('part of the conversation.',960,287,91,E(t,.3,.8),C.text);
+ const p=S(t,1,2);device('progress',mix(960,668,p),740,650,-.045,.08);alpha(p,()=>report(mix(960,1255,p),740,t));
+ alpha(E(t,3),()=>txt('Your history. A report. Something to share.',960,370,34,'#5b6377',450,'center'));bottomFade(true);caption('Simulator and report illustration use sample data.',1034,'#65718a')
+}
+function scene8(t){stage(t+80);const k=t<2?0:t<4?1:2,phrases=['On your iPhone.','No servers.','Your words stay yours.'];
+ headline(phrases[k],960,440,k===2?116:136,E(t,k*2,.75));
+ const x=960,y=670;const a=S(t,0,1);camera(x,y,a,0,()=>{rr(-48,-10,96,85,20,'#162b4c','#6b9bea',2);c.beginPath();c.arc(0,-10,31,Math.PI,0);c.lineTo(31,0);c.moveTo(-31,-10);c.lineTo(-31,0);c.strokeStyle='#9ab7ff';c.lineWidth=7;c.stroke();dot(0,25,7,C.cyan);line(0,30,0,45,C.cyan,5)});
+ alpha(E(t,4.3,.7),()=>caption('The keyboard never saves what you type.',864,'#d2ddf3'));caption('Optional sync uses your own iCloud.',1008,'#8d9cba')
+}
+function scene9(t){aura(t+86);const p=E(t,0,1.4);headline('TypeParkinson',960,340,142,p,'#fff','center',740);headline('A keyboard that learns your hands.',960,438,52,E(t,.6,1.2),'#e0e9ff','center',500);
+ alpha(E(t,1.4,1.2),()=>{txt('Atharv Sharma & Pranav Atreya',960,674,37,'#fff',550,'center');txt('Congressional App Challenge',960,737,27,'#c4d3f6',450,'center')});
+ alpha(E(t,2.4),()=>{line(710,824,1210,824,'#ffffff26',1);txt('pranav-atreya10.github.io/TypeParkinson',960,895,29,'#d2e1ff',450,'center')});
+}
+const scenes=[scene0,scene1,scene2,scene3,scene4,scene5,scene6,scene7,scene8,scene9];
+function paintScene(i,t,x=0,y=0){c.save();c.translate(x,y);scenes[i](t);c.restore()}
+function draw(t){t=clamp(t,0,93.999);const i=starts.findLastIndex(s=>t>=s),local=t-starts[i];c.resetTransform();c.globalAlpha=1;c.shadowColor='transparent';c.lineWidth=1;c.setLineDash([]);c.clearRect(0,0,W,H);
+ if((i===2||i===9)&&local<.8){paintScene(i-1,starts[i]-starts[i-1]-.001);c.save();c.beginPath();c.arc(960,640,Math.max(.01,ease(local/.8)*1400),0,Math.PI*2);c.clip();paintScene(i,local);c.restore()}
+ else if((i===5||i===7)&&local<.65){const p=io(local/.65);paintScene(i-1,starts[i]-starts[i-1]-.001,-W*p);paintScene(i,local,W*(1-p))}
+ else paintScene(i,local);
+ document.getElementById('seek').value=t;document.getElementById('time').textContent=`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')} / 1:34`;return i}
+async function seekVideo(v,t){t=clamp(t,0,Math.max(0,v.duration-.08));if(Math.abs(v.currentTime-t)<.012)return;await new Promise((res,rej)=>{const timer=setTimeout(()=>{v.removeEventListener('seeked',done);rej(Error('Video seek timed out'))},7000);function done(){clearTimeout(timer);res()}v.addEventListener('seeked',done,{once:true});v.currentTime=t})}
+function videoTimes(t){return [['todayClip',clamp(t-48,0,3.99)],['voiceClip',clamp(t-55.3,0,6.1)],['tremorClip',clamp((t-60)*1.5,0,13.9)]]}
+window.__ready=Promise.all(ready).then(()=>{draw(0);return true});let renderGeneration=0;window.__render=async t=>{const generation=++renderGeneration;await window.__ready;for(const[name,vt]of videoTimes(t)){if(generation!==renderGeneration)return false;if(videos[name])await seekVideo(videos[name],vt)}return generation===renderGeneration?draw(t):false};window.__duration=DURATION;window.__scenes=starts;
+const params=new URLSearchParams(location.search),capture=params.has('capture'),reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;let playing=!capture&&!reduced,now=0,base=performance.now(),origin=0;
+if(capture)document.body.classList.add('capture');if(reduced)document.body.classList.add('manual');
+function sync(){document.getElementById('play').textContent=playing?'Pause':'Play';document.getElementById('play').setAttribute('aria-label',playing?'Pause film':'Play film')}
+function jump(t){now=clamp(t,0,93.999);origin=now;base=performance.now();window.__render(now)}
+function toggle(){if(!playing&&now>=DURATION-.05)now=0;playing=!playing;origin=now;base=performance.now();sync()}
+function step(d){let i=starts.findLastIndex(s=>now>=s);if(reduced&&!playing){const poses=[4.8,11,18,31,39,54,66,76,84.8,91];jump(poses[clamp(i+d,0,9)]);return}if(d<0&&now>starts[i]+1.2)jump(starts[i]+.5);else jump(starts[clamp(i+d,0,9)]+.5)}
+function full(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{})}
+document.getElementById('play').onclick=toggle;document.getElementById('prev').onclick=()=>step(-1);document.getElementById('next').onclick=()=>step(1);document.getElementById('full').onclick=full;document.getElementById('seek').oninput=e=>jump(+e.target.value);
+addEventListener('keydown',e=>{if(e.key.toLowerCase()==='f'){full();return}if(e.target instanceof Element&&e.target.matches('input,button'))return;if(e.code==='Space'){e.preventDefault();toggle()}if(e.key==='ArrowRight'){e.preventDefault();step(1)}if(e.key==='ArrowLeft'){e.preventDefault();step(-1)}});
+let busy=false;async function tick(stamp){if(!capture&&playing&&!busy){now=origin+(stamp-base)/1000;if(now>=94){now=93.999;playing=false;sync()}busy=true;try{await window.__render(now)}finally{busy=false}}requestAnimationFrame(tick)}sync();window.__ready.then(()=>{if(reduced&&!capture)jump(4.8);requestAnimationFrame(tick)});
+</script></body></html>

@@ -117,6 +117,7 @@ struct SpeakView: View {
                         }
                     },
                     onCorrection: { composer.correct($0) },
+                    onRepeatDeleteStart: { composer.beginRepeatDelete() },
                     onRepeatDelete: settings.holdToDeleteEnabled ? { composer.repeatDelete() } : nil
                 )
             }

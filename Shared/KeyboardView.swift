@@ -37,6 +37,8 @@ struct KeyboardView: View {
     var onBlockedRepeat: () -> Void = {}
     var onIgnoredBrush: () -> Void = {}
     var onCorrection: (CorrectionAction) -> Void = { _ in }
+    /// Starts one Undo group when a hold reaches the repeat threshold.
+    var onRepeatDeleteStart: () -> Void = {}
     /// Called repeatedly while delete is held down; nil turns hold-to-repeat off.
     var onRepeatDelete: (() -> Void)?
 
@@ -146,8 +148,11 @@ struct KeyboardView: View {
             return
         }
         guard repeatTasks[id] == nil else { return }
+        let onStart = onRepeatDeleteStart
         repeatTasks[id] = Task {
-            try? await Task.sleep(for: Self.repeatDelay)
+            do { try await Task.sleep(for: Self.repeatDelay) } catch { return }
+            guard !Task.isCancelled else { return }
+            onStart()
             while !Task.isCancelled {
                 repeated.insert(id)
                 onRepeatDelete()

@@ -441,9 +441,9 @@ final class AppModel {
 
     // MARK: Medication
 
-    /// Saves the schedule and its reminders. Returns false when notifications are off.
+    /// Saves the schedule locally and reports whether its reminders were set.
     @discardableResult
-    func saveMedications(_ medications: [Medication]) async -> Bool {
+    func saveMedications(_ medications: [Medication]) async -> MedicationReminders.ScheduleResult {
         self.medications = medications
         defaults.set(try? JSONEncoder().encode(medications), forKey: Keys.medications)
         return await MedicationReminders.schedule(medications)

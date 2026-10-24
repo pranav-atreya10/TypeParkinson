@@ -28,7 +28,10 @@ enum ReportBuilder {
         let dateFormat = Date.ISO8601FormatStyle()
         var rows = ["date,activity,measure,value,unit,detail"]
         func row(_ date: Date, _ activity: String, _ measure: String, _ value: Double, _ unit: String, _ detail: String = "") {
-            rows.append("\(date.formatted(dateFormat)),\(activity),\(measure),\(value.formatted(.number.precision(.fractionLength(0...3)).grouping(.never))),\(unit),\(detail)")
+            // A CSV is comma-delimited even when the phone uses decimal commas.
+            let number = String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
+            let fields = [date.formatted(dateFormat), activity, measure, number, unit, csvDetail(detail)]
+            rows.append(fields.joined(separator: ","))
         }
         for c in log.checkIns {
             let kind = c.isSetup ? "setup taps" : "daily check"
@@ -50,6 +53,21 @@ enum ReportBuilder {
             row(t.date, "typing", "speed", t.wordsPerMinute, "wpm")
             row(t.date, "typing", "accuracy", t.accuracy * 100, "%")
         }
+        for t in log.tremor {
+            let detail = "\(t.hand.rawValue.lowercased()); \(t.result.posture.title)"
+            row(t.date, "tremor", "strongest shake rate", t.result.frequency, "Hz", detail)
+            row(t.date, "tremor", "shake strength", t.result.amplitude, "mg", detail)
+            row(t.date, "tremor", "reading duration", t.result.duration, "s", detail)
+        }
+        for v in log.voice {
+            row(v.date, "voice", "relative loudness", v.result.level, "0-1")
+            row(v.date, "voice", "time in loud zone", v.result.inTarget * 100, "%")
+            row(v.date, "voice", "steadiness", v.result.steadiness * 100, "%")
+            row(v.date, "voice", "voiced duration", v.result.duration, "s")
+        }
+        for dose in log.doses {
+            row(dose.date, "medication", "logged dose", 1, "entry", dose.name)
+        }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("TypeParkinson data.csv")
         do {
             try rows.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
@@ -57,6 +75,14 @@ enum ReportBuilder {
         } catch {
             return nil
         }
+    }
+
+    /// Medication names are user-entered text: preserve CSV punctuation and
+    /// prevent spreadsheet apps from interpreting a name as a formula.
+    private static func csvDetail(_ value: String) -> String {
+        let first = value.trimmingCharacters(in: .whitespacesAndNewlines).first
+        let text = first.map { "=+-@".contains($0) } == true ? "'" + value : value
+        return "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 }
 
@@ -72,7 +98,10 @@ private struct ReportPage: View {
         let spirals = log.spirals.filter { range.includes($0.date) }
         let tapping = log.tapping.filter { range.includes($0.date) }
         let typing = log.typing.filter { range.includes($0.date) }
-        VStack(alignment: .leading, spacing: 18) {
+        let tremor = log.tremor.filter { range.includes($0.date) }
+        let voice = log.voice.filter { range.includes($0.date) }
+        let doses = log.doses.filter { range.includes($0.date) }
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("TypeParkinson report").font(.system(size: 26, weight: .bold, design: .rounded))
@@ -86,7 +115,12 @@ private struct ReportPage: View {
             HStack(spacing: 12) {
                 figure("\(checks.count)", "daily checks")
                 figure(checks.isEmpty ? "–" : checks.map(\.distance).mean.oneDecimal + " pt", "average distance from target")
-                figure("\(spirals.count + tapping.count + typing.count)", "practice sessions")
+                figure("\(spirals.count + tapping.count + typing.count + tremor.count + voice.count)", "practice sessions")
+            }
+            HStack(spacing: 12) {
+                figure(tremor.isEmpty ? "–" : tremor.map(\.result.frequency).mean.oneDecimal + " Hz", "average shake rate")
+                figure(voice.isEmpty ? "–" : (voice.map(\.result.inTarget).mean * 100).oneDecimal + "%", "voice time in loud zone")
+                figure("\(doses.count)", "logged doses")
             }
             if let estimate {
                 VStack(alignment: .leading, spacing: 4) {
@@ -140,12 +174,12 @@ private struct ReportPage: View {
                 .chartYScale(domain: .automatic(includesZero: false))
                 .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()).font(.system(size: 7)) } }
                 .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { _ in AxisGridLine(); AxisValueLabel().font(.system(size: 7)) } }
-                .frame(height: 110)
+                .frame(height: 90)
             } else {
                 Text(points.isEmpty ? "No results in this period." : "One result: \(points[0].value.oneDecimal).")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
-                    .frame(height: 110, alignment: .center)
+                    .frame(height: 90, alignment: .center)
             }
         }
         .padding(10)

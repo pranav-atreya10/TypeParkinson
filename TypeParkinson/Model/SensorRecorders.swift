@@ -75,7 +75,7 @@ final class MotionRecorder {
 }
 
 /// Listens to the microphone for the voice exercise and reports loudness
-/// twenty times a second. The audio itself is thrown away as it's measured.
+/// twenty times a second. Its temporary audio file is deleted when the meter stops.
 @Observable
 final class VoiceMeter {
     static let interval = 0.05
@@ -93,7 +93,8 @@ final class VoiceMeter {
         await AVAudioApplication.requestRecordPermission()
     }
 
-    func start(simulated: Bool, duration: Double = VoiceAnalysis.duration, onFinish: @escaping () -> Void) {
+    @discardableResult
+    func start(simulated: Bool, duration: Double = VoiceAnalysis.duration, onFinish: @escaping () -> Void) -> Bool {
         stop()
         levels = []
         progress = 0
@@ -107,10 +108,17 @@ final class VoiceMeter {
                     AVFormatIDKey: kAudioFormatAppleIMA4, AVSampleRateKey: 22_050, AVNumberOfChannelsKey: 1,
                 ])
                 recorder.isMeteringEnabled = true
-                recorder.record()
+                guard recorder.record() else {
+                    recorder.deleteRecording()
+                    stop()
+                    return false
+                }
                 self.recorder = recorder
             } catch {
-                self.recorder = nil
+                // A hardware failure must never turn into a synthetic voice result.
+                // Sample playback is only allowed when explicitly requested above.
+                stop()
+                return false
             }
         }
         let steps = Int(duration / Self.interval)
@@ -137,6 +145,7 @@ final class VoiceMeter {
             stop()
             onFinish()
         }
+        return true
     }
 
     func stop() {

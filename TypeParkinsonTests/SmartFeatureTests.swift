@@ -74,6 +74,18 @@ import Testing
                                                   keyCenters: centers))
         #expect(decoded.best == "the")
     }
+
+    @Test func clearingTransientWordsPreservesPersonalLearning() throws {
+        let model = TouchModel(meanX: 30, meanY: 0, sigmaX: 7, sigmaY: 7, samples: 50)
+        let decoder = IntentDecoder(model: model, strength: 0.6)
+        let input = touches("tje", nudges: [0: CGVector(dx: 30, dy: 0), 2: CGVector(dx: 30, dy: 0)])
+        let before = try #require(decoder.decode(input, keyCenters: centers))
+        #expect(before.best == "the")
+        decoder.clearTransientText()
+        #expect(decoder.model == model)
+        let after = try #require(decoder.decode(input, keyCenters: centers))
+        #expect(after.best == "the")
+    }
 }
 
 @Suite struct TouchModelTests {
@@ -328,5 +340,115 @@ import Testing
         #expect(shaky.touchModel != nil)
         let jumps = TouchProfile.sample.proposedSettings(pattern: .suddenMovements)
         #expect(jumps.keySize == .extraLarge)
+    }
+}
+
+// MARK: - Care-team exports
+
+@MainActor
+@Suite(.serialized) struct ReportExportTests {
+    private func contents(_ log: ActivityLog) throws -> String {
+        let url = try #require(ReportBuilder.csv(log: log))
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    @Test func anEmptyHistoryHasOnlyTheColumnHeader() throws {
+        #expect(try contents(ActivityLog()) == "date,activity,measure,value,unit,detail")
+    }
+
+    @Test func sensorAndMedicationHistoryAreIncluded() throws {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        var log = ActivityLog()
+        log.tremor = [TremorRecord(date: date, hand: .right,
+                                  result: TremorResult(frequency: 5.2, amplitude: 34.9, posture: .rest, duration: 10, spectrum: []))]
+        log.voice = [VoiceRecord(date: date, result: VoiceResult(level: 0.7, inTarget: 0.8, steadiness: 0.9, duration: 5))]
+        log.doses = [DoseRecord(date: date, medicationID: UUID(), name: "Carbidopa-levodopa")]
+        let csv = try contents(log)
+        #expect(csv.contains(",tremor,strongest shake rate,5.200,Hz,"))
+        #expect(csv.contains(",tremor,shake strength,34.900,mg,"))
+        #expect(csv.contains(",voice,time in loud zone,80.000,%,"))
+        #expect(csv.contains(",voice,voiced duration,5.000,s,"))
+        #expect(csv.contains(",medication,logged dose,1.000,entry,\"Carbidopa-levodopa\""))
+        #expect(csv.split(separator: "\n").count == 9)
+    }
+
+    @Test func medicationPunctuationAndLineBreaksStayInOneField() throws {
+        var log = ActivityLog()
+        log.doses = [DoseRecord(date: .now, medicationID: UUID(), name: "Medicine, \"morning\"\nwith food")]
+        let csv = try contents(log)
+        #expect(csv.hasSuffix("\"Medicine, \"\"morning\"\"\nwith food\""))
+    }
+
+    @Test func medicationNamesCannotBecomeSpreadsheetFormulas() throws {
+        for name in ["=1+1", "+SUM(A1)", "-2+3", "@SUM(A1)", "  =1+1", "\t=1+1"] {
+            var log = ActivityLog()
+            log.doses = [DoseRecord(date: .now, medicationID: UUID(), name: name)]
+            #expect(try contents(log).hasSuffix("\"'" + name + "\""))
+        }
+    }
+}
+
+// MARK: - Hold-to-delete Undo
+
+@MainActor
+@Suite struct TextComposerUndoTests {
+    private func composer() -> TextComposer {
+        TextComposer(settings: nil, smartCorrection: false, suggestions: false, autoCapitalize: false)
+    }
+
+    @Test func oneHoldIsRestoredByOneUndo() {
+        let text = composer()
+        text.insert(phrase: "hello")
+        text.beginRepeatDelete()
+        for _ in 0..<3 { text.repeatDelete() }
+        #expect(text.text == "he")
+        text.correct(.undo)
+        #expect(text.text == "hello")
+    }
+
+    @Test func separateHoldsHaveSeparateUndoGroups() {
+        let text = composer()
+        text.insert(phrase: "hello")
+        text.beginRepeatDelete()
+        for _ in 0..<2 { text.repeatDelete() }
+        text.beginRepeatDelete()
+        text.repeatDelete()
+        #expect(text.text == "he")
+        text.correct(.undo)
+        #expect(text.text == "hel")
+        text.correct(.undo)
+        #expect(text.text == "hello")
+    }
+
+    @Test func editingDuringARepeatStartsANewUndoGroup() {
+        let text = composer()
+        text.insert(phrase: "hello")
+        text.beginRepeatDelete()
+        text.repeatDelete()
+        text.insert(phrase: "again")
+        #expect(text.text == "hell again")
+        text.repeatDelete()
+        text.repeatDelete()
+        #expect(text.text == "hell aga")
+        text.correct(.undo)
+        #expect(text.text == "hell again")
+    }
+
+    @Test func repeatingDeleteClearsAnObsoleteCorrectionChip() throws {
+        let layout = KeyboardLayout(size: .standard, width: 390, options: .init())
+        let text = TextComposer(settings: nil, smartCorrection: true, suggestions: false, autoCapitalize: false)
+        for (index, letter) in "teh".enumerated() {
+            let key = try #require(layout.keys.first { $0.id == String(letter) })
+            text.press(KeyPress(key: key, uncorrectedKey: key,
+                                point: CGPoint(x: key.frame.midX, y: key.frame.midY),
+                                time: Double(index) * 0.4, layout: layout))
+        }
+        let space = try #require(layout.keys.first { $0.action == .space })
+        text.press(KeyPress(key: space, uncorrectedKey: space))
+        _ = try #require(text.correction)
+        text.beginRepeatDelete()
+        text.repeatDelete()
+        #expect(text.correction == nil)
     }
 }

@@ -22,6 +22,7 @@ struct Card<Content: View>: View {
 /// A card that is itself the button. Shrinks a touch when pressed.
 struct CardButtonStyle: ButtonStyle {
     var padding: CGFloat = Theme.Space.s4
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -30,9 +31,9 @@ struct CardButtonStyle: ButtonStyle {
             .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
             .foregroundStyle(Theme.text)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .spring(duration: 0.2), value: configuration.isPressed)
     }
 }
 
@@ -79,7 +80,7 @@ struct BigNumber: View {
             .font(Theme.rounded(size: size, weight: .bold))
             .foregroundStyle(color)
             .monospacedDigit()
-            .contentTransition(.numericText(value: shown ?? value))
+            .contentTransition(reduceMotion ? .identity : .numericText(value: shown ?? value))
             .accessibilityLabel(value.formatted(.number.precision(.fractionLength(decimals))))
             .onAppear {
                 guard shown == nil else { return }
@@ -88,7 +89,11 @@ struct BigNumber: View {
                 withAnimation(.smooth(duration: 0.9).delay(0.1)) { shown = value }
             }
             .onChange(of: value) { _, new in
+                guard !reduceMotion else { shown = new; return }
                 withAnimation(.smooth(duration: 0.4)) { shown = new }
+            }
+            .onChange(of: reduceMotion) { _, enabled in
+                if enabled { shown = value }
             }
     }
 }

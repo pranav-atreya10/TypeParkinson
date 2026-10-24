@@ -56,7 +56,7 @@ struct AuraBackground: View {
             let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate * mood.speed
             MeshGradient(width: 3, height: 3, points: points(t), colors: mood.colors, smoothsColors: true)
         }
-        .animation(.easeInOut(duration: 1.2), value: mood)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 1.2), value: mood)
         .accessibilityHidden(true)
     }
 
@@ -116,6 +116,7 @@ struct DailyRings: View {
 /// A white pill: the one solid action on a dark Aura.
 struct AuraPrimaryButtonStyle: ButtonStyle {
     var tint: Color = Theme.ink
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -124,14 +125,16 @@ struct AuraPrimaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: 58)
             .background(.white, in: Capsule())
             .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(duration: 0.25, bounce: 0.4), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .opacity(reduceMotion && configuration.isPressed ? 0.9 : 1)
+            .animation(reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.4), value: configuration.isPressed)
     }
 }
 
 /// Liquid Glass over the Aura, for secondary actions.
 struct GlassPillButtonStyle: ButtonStyle {
     var minHeight: CGFloat = 46
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -140,8 +143,9 @@ struct GlassPillButtonStyle: ButtonStyle {
             .padding(.horizontal, 16)
             .frame(minHeight: minHeight)
             .glassEffect(.regular.interactive(), in: Capsule())
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(duration: 0.25, bounce: 0.4), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .opacity(reduceMotion && configuration.isPressed ? 0.9 : 1)
+            .animation(reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.4), value: configuration.isPressed)
     }
 }
 

@@ -527,12 +527,16 @@ private struct TappingSession: View {
 
     private func tap(_ raw: CGPoint, centers: [CGPoint]) {
         guard result == nil else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if let started, now - started >= Tapping.duration {
+            finish()
+            return
+        }
         let d = model.simulator.tapDisplacement()
         let point = CGPoint(x: raw.x + d.dx * 0.6, y: raw.y + d.dy * 0.6)
         let distances = centers.map { hypot(point.x - $0.x, point.y - $0.y) }
         let nearest = distances[0] <= distances[1] ? 0 : 1
         let inside = distances[nearest] <= 66
-        let now = ProcessInfo.processInfo.systemUptime
         if started == nil {
             started = now
             startTimer()
@@ -551,7 +555,7 @@ private struct TappingSession: View {
         timer = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                guard let started else { return }
+                guard !Task.isCancelled, let started else { return }
                 let left = max(0, Tapping.duration - (ProcessInfo.processInfo.systemUptime - started))
                 remaining = left
                 if left <= 0 {
@@ -563,6 +567,9 @@ private struct TappingSession: View {
     }
 
     private func finish() {
+        guard result == nil, started != nil else { return }
+        timer?.cancel()
+        timer = nil
         let r = Tapping.analyze(events)
         model.activity.add(TappingRecord(date: .now, hand: hand, result: r))
         withAnimation(.smooth(duration: 0.35)) { result = r }

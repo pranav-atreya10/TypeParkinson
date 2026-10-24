@@ -28,6 +28,7 @@ final class TextComposer {
     @ObservationIgnored private var history: [String] = []
     @ObservationIgnored private var wordTouches: [TypedTouch] = []
     @ObservationIgnored private var lastLayout: KeyboardLayout?
+    @ObservationIgnored private var isRepeatingDelete = false
 
     init(settings: KeyboardSettings?, smartCorrection: Bool? = nil, suggestions: Bool? = nil, autoCapitalize: Bool = true) {
         self.smartCorrection = smartCorrection ?? (settings?.smartCorrectionEnabled ?? false)
@@ -42,6 +43,7 @@ final class TextComposer {
     // MARK: Keys
 
     func press(_ press: KeyPress) {
+        isRepeatingDelete = false
         correction = nil
         switch press.key.action {
         case .character(let c):
@@ -82,6 +84,7 @@ final class TextComposer {
     }
 
     func correct(_ action: CorrectionAction) {
+        isRepeatingDelete = false
         correction = nil
         switch action {
         case .backspace:
@@ -104,14 +107,23 @@ final class TextComposer {
         updateSuggestions()
     }
 
+    /// Each separate hold should be recoverable with one Undo.
+    func beginRepeatDelete() {
+        isRepeatingDelete = false
+    }
+
     func repeatDelete() {
-        deleteLast()
+        correction = nil
+        guard !text.isEmpty else { return }
+        deleteLast(recordUndo: !isRepeatingDelete)
+        isRepeatingDelete = true
         updateShift()
         updateSuggestions()
     }
 
     /// Replaces the word being typed with a suggestion.
     func pick(_ word: String) {
+        isRepeatingDelete = false
         correction = nil
         remember()
         let partial = WordSuggester.partialWord(in: text)
@@ -124,6 +136,7 @@ final class TextComposer {
     }
 
     func insert(phrase: String) {
+        isRepeatingDelete = false
         correction = nil
         start()
         remember()
@@ -136,6 +149,7 @@ final class TextComposer {
 
     /// Puts back what was typed (`nil`) or swaps in an alternative.
     func revertCorrection(to alternative: String?) {
+        isRepeatingDelete = false
         guard let correction else { return }
         self.correction = nil
         let current = correction.corrected + correction.separator
@@ -149,6 +163,7 @@ final class TextComposer {
     }
 
     func clear() {
+        isRepeatingDelete = false
         guard !text.isEmpty else { return }
         remember()
         text = ""
@@ -188,9 +203,9 @@ final class TextComposer {
         text += s
     }
 
-    private func deleteLast() {
+    private func deleteLast(recordUndo: Bool = true) {
         guard !text.isEmpty else { return }
-        remember()
+        if recordUndo { remember() }
         text.removeLast()
         if !wordTouches.isEmpty { wordTouches.removeLast() }
         manualCorrections += 1

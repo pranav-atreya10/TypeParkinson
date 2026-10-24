@@ -32,6 +32,12 @@ struct DoseRecord: Codable, Identifiable, Equatable {
 }
 
 enum MedicationReminders {
+    enum ScheduleResult: Equatable {
+        case scheduled
+        case notificationsOff
+        case failed
+    }
+
     static let category = "MEDICATION"
     static let tookItAction = "TOOK_IT"
     static let prefix = "med-"
@@ -43,15 +49,19 @@ enum MedicationReminders {
         UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
-    /// Replaces all medication reminders. Returns false if notifications are off.
-    static func schedule(_ medications: [Medication]) async -> Bool {
+    /// Replaces medication reminders, reporting permission and scheduling failures separately.
+    static func schedule(_ medications: [Medication]) async -> ScheduleResult {
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) }
         center.removePendingNotificationRequests(withIdentifiers: pending)
-        guard !medications.isEmpty else { return true }
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        guard granted else { return false }
+        guard !medications.isEmpty else { return .scheduled }
+        do {
+            guard try await center.requestAuthorization(options: [.alert, .sound]) else { return .notificationsOff }
+        } catch {
+            return .failed
+        }
         registerCategory()
+        var failed = false
         for med in medications {
             for (i, time) in med.times.enumerated() {
                 let content = UNMutableNotificationContent()
@@ -65,9 +75,13 @@ enum MedicationReminders {
                 c.minute = time.minute
                 let request = UNNotificationRequest(identifier: "\(prefix)\(med.id.uuidString)-\(i)", content: content,
                                                     trigger: UNCalendarNotificationTrigger(dateMatching: c, repeats: true))
-                try? await center.add(request)
+                do {
+                    try await center.add(request)
+                } catch {
+                    failed = true
+                }
             }
         }
-        return true
+        return failed ? .failed : .scheduled
     }
 }

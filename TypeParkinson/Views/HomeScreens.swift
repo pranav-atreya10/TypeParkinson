@@ -284,6 +284,7 @@ struct InsightRow: View {
 
 private struct PracticeCarousel: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s3) {
@@ -301,8 +302,8 @@ private struct PracticeCarousel: View {
                         .buttonStyle(PressableStyle())
                         .scrollTransition(.interactive, axis: .horizontal) { content, phase in
                             content
-                                .scaleEffect(phase.isIdentity ? 1 : 0.94)
-                                .opacity(phase.isIdentity ? 1 : 0.85)
+                                .scaleEffect(phase.isIdentity || reduceMotion ? 1 : 0.94)
+                                .opacity(phase.isIdentity || reduceMotion ? 1 : 0.85)
                         }
                     }
                 }
@@ -359,11 +360,13 @@ struct PracticeTile: View {
 
 /// Plain press feedback for custom-drawn buttons.
 struct PressableStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.spring(duration: 0.25, bounce: 0.35), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.35), value: configuration.isPressed)
     }
 }
 
@@ -637,19 +640,21 @@ struct RecalResultView: View {
 
 struct FeelingPicker: View {
     @Binding var selection: Feeling?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: Theme.Space.s2) {
             ForEach(Feeling.allCases) { feeling in
                 let selected = selection == feeling
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) { selection = selected ? nil : feeling }
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { selection = selected ? nil : feeling }
                 } label: {
                     VStack(spacing: 6) {
                         Image(systemName: feeling.symbol)
                             .symbolRenderingMode(.hierarchical)
                             .font(.system(size: 24))
                             .symbolEffect(.bounce, value: selected)
+                            .symbolEffectsRemoved(reduceMotion)
                         Text(feeling.label).font(Theme.font(.footnote, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity, minHeight: 76)

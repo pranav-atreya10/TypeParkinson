@@ -109,6 +109,7 @@ struct TPButtonStyle: ButtonStyle {
         let fullWidth: Bool
         let tint: Color
         @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @Environment(AppModel.self) private var model
 
         var body: some View {
@@ -134,8 +135,8 @@ struct TPButtonStyle: ButtonStyle {
                 }
             }
             .contentShape(Rectangle())
-            .scaleEffect(configuration.isPressed && kind != .ghost ? 0.97 : 1)
-            .animation(.spring(duration: 0.2), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && kind != .ghost && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .spring(duration: 0.2), value: configuration.isPressed)
             .opacity(isEnabled ? 1 : 0.45)
         }
 
@@ -198,13 +199,14 @@ struct SegmentedChoice<Value: Hashable>: View {
     let options: [(label: String, value: Value)]
     @Binding var selection: Value
     var tint: Color = Theme.accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let selected = option.value == selection
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) { selection = option.value }
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) { selection = option.value }
                 } label: {
                     Text(option.label)
                         .font(Theme.font(.subheadline, weight: selected ? .semibold : .regular))

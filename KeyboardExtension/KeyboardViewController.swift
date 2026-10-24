@@ -44,10 +44,22 @@ final class KeyboardViewController: UIInputViewController {
         case replaced(old: String, new: String)
     }
 
+    /// Undo is only valid in the document and at the cursor where the edit ended.
+    private struct EditContext: Equatable {
+        var document: UUID
+        var before: String?
+        var after: String?
+    }
+
+    private struct UndoEntry {
+        var edit: Edit
+        var context: EditContext
+    }
+
     private let state = KeyboardState(settings: SharedStore.loadSettings() ?? KeyboardSettings())
     private let suggester = WordSuggester()
     private let decoder = IntentDecoder()
-    private var undoStack: [Edit] = []
+    private var undoStack: [UndoEntry] = []
     /// Deletions from one hold of the delete key are undone together.
     private var isHoldingDelete = false
     private var heightConstraint: NSLayoutConstraint?
@@ -63,6 +75,7 @@ final class KeyboardViewController: UIInputViewController {
             state: state,
             onPress: { [weak self] in self?.handle($0) },
             onCorrection: { [weak self] in self?.handle($0) },
+            onRepeatDeleteStart: { [weak self] in self?.isHoldingDelete = false },
             onRepeatDelete: { [weak self] in self?.repeatDelete() },
             onPickSuggestion: { [weak self] in self?.pick($0) },
             onPickPhrase: { [weak self] in self?.insertPhrase($0) },
@@ -94,14 +107,13 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        clearTransientText()
         // Pick up changes made in the app (new settings, "adjust for today", edited phrases).
         if let settings = SharedStore.loadSettings() {
             state.settings = settings
         }
         state.phrases = QuickPhrase.current
         state.isShowingPhrases = false
-        state.correction = nil
-        wordTouches = []
         loadTouchModel()
         updateOptions()
         updateAutoShift()
@@ -111,6 +123,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         saveTouchModel()
+        clearTransientText()
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
@@ -123,6 +136,7 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: Keys
 
     private func handle(_ press: KeyPress) {
+        discardStaleEdits()
         isHoldingDelete = false
         state.correction = nil
         switch press.key.action {
@@ -211,6 +225,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Puts back what was typed (`nil`) or swaps in one of the alternatives.
     private func revertCorrection(to alternative: String?) {
+        discardStaleEdits()
         guard let correction = state.correction else { return }
         state.correction = nil
         let current = correction.corrected + correction.separator
@@ -253,13 +268,18 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: Editing
 
     private func repeatDelete() {
+        discardStaleEdits()
+        let context = editContext
         let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        guard let last = before.last else { return }
+        let selected = textDocumentProxy.selectedText ?? ""
+        let removed = selected.isEmpty ? String(before.suffix(1)) : selected
+        guard !removed.isEmpty else { return }
         textDocumentProxy.deleteBackward()
-        if isHoldingDelete, case .deleted(let text)? = undoStack.last {
-            undoStack[undoStack.count - 1] = .deleted(String(last) + text)
+        if isHoldingDelete, let entry = undoStack.last, entry.context == context,
+           case .deleted(let text) = entry.edit, let nextContext = editContext {
+            undoStack[undoStack.count - 1] = UndoEntry(edit: .deleted(removed + text), context: nextContext)
         } else {
-            record(.deleted(String(last)))
+            record(.deleted(removed))
         }
         isHoldingDelete = true
         wordTouches = []
@@ -269,6 +289,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func handle(_ action: CorrectionAction) {
+        discardStaleEdits()
         isHoldingDelete = false
         state.correction = nil
         switch action {
@@ -280,8 +301,15 @@ final class KeyboardViewController: UIInputViewController {
             wordTouches = []
         case .undo:
             wordTouches = []
-            guard let edit = undoStack.popLast() else { return }
-            switch edit {
+            guard let entry = undoStack.last else { return }
+            guard entry.context == editContext else {
+                clearTransientText()
+                updateAutoShift()
+                updateSuggestions()
+                return
+            }
+            undoStack.removeLast()
+            switch entry.edit {
             case .inserted(let text):
                 for _ in text { textDocumentProxy.deleteBackward() }
             case .deleted(let text):
@@ -297,13 +325,17 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Replaces the word being typed with the suggestion, plus a space.
     private func pick(_ word: String) {
+        discardStaleEdits()
         isHoldingDelete = false
         state.correction = nil
+        let selected = textDocumentProxy.selectedText ?? ""
         let partial = WordSuggester.partialWord(in: textDocumentProxy.documentContextBeforeInput ?? "")
-        for _ in partial { textDocumentProxy.deleteBackward() }
+        if selected.isEmpty {
+            for _ in partial { textDocumentProxy.deleteBackward() }
+        }
         let replacement = word + " "
         textDocumentProxy.insertText(replacement)
-        record(.replaced(old: partial, new: replacement))
+        record(.replaced(old: selected.isEmpty ? partial : selected, new: replacement))
         wordTouches = []
         if state.shift == .once { state.shift = .off }
         updateAutoShift()
@@ -312,6 +344,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Types a saved phrase, with a space before it if it would otherwise join the previous word.
     private func insertPhrase(_ phrase: QuickPhrase) {
+        discardStaleEdits()
         isHoldingDelete = false
         state.correction = nil
         let before = textDocumentProxy.documentContextBeforeInput ?? ""
@@ -324,11 +357,17 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func insert(_ text: String) {
+        let selected = textDocumentProxy.selectedText ?? ""
         textDocumentProxy.insertText(text)
-        record(.inserted(text))
+        record(selected.isEmpty ? .inserted(text) : .replaced(old: selected, new: text))
     }
 
     private func deleteBackward(count: Int) {
+        if let selected = textDocumentProxy.selectedText, !selected.isEmpty {
+            textDocumentProxy.deleteBackward()
+            record(.deleted(selected))
+            return
+        }
         guard count > 0 else { return }
         let before = textDocumentProxy.documentContextBeforeInput ?? ""
         for _ in 0..<count { textDocumentProxy.deleteBackward() }
@@ -337,8 +376,41 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func record(_ edit: Edit) {
-        undoStack.append(edit)
+        guard let context = editContext else {
+            // Missing context or a selection: don't retain an edit we cannot safely undo.
+            undoStack.removeAll()
+            return
+        }
+        undoStack.append(UndoEntry(edit: edit, context: context))
         if undoStack.count > 60 { undoStack.removeFirst() }
+    }
+
+    /// Cursor moves, host edits and field switches invalidate the old touch sequence.
+    private func discardStaleEdits() {
+        if let entry = undoStack.last, entry.context != editContext {
+            clearTransientText()
+        }
+    }
+
+    private var editContext: EditContext? {
+        let proxy = textDocumentProxy
+        guard proxy.isSecureTextEntry != true, proxy.selectedText?.isEmpty != false else { return nil }
+        let before = proxy.documentContextBeforeInput
+        let after = proxy.documentContextAfterInput
+        // A nil side can mean the cursor is at an edge. Both nil with text still
+        // present means the host has withheld the context, so Undo is unsafe.
+        guard before != nil || after != nil || !proxy.hasText else { return nil }
+        return EditContext(document: proxy.documentIdentifier, before: before, after: after)
+    }
+
+    private func clearTransientText() {
+        undoStack.removeAll()
+        wordTouches.removeAll()
+        lastLayout = nil
+        isHoldingDelete = false
+        state.correction = nil
+        state.suggestions = []
+        decoder.clearTransientText()
     }
 
     /// Length of the last word plus any spaces after it, or of trailing spaces alone.
@@ -430,6 +502,7 @@ private struct ExtensionKeyboardView: View {
     let state: KeyboardState
     let onPress: (KeyPress) -> Void
     let onCorrection: (CorrectionAction) -> Void
+    let onRepeatDeleteStart: () -> Void
     let onRepeatDelete: () -> Void
     let onPickSuggestion: (String) -> Void
     let onPickPhrase: (QuickPhrase) -> Void
@@ -468,6 +541,7 @@ private struct ExtensionKeyboardView: View {
                     showsKeyPreview: settings.keyPreviewEnabled,
                     onPress: onPress,
                     onCorrection: onCorrection,
+                    onRepeatDeleteStart: onRepeatDeleteStart,
                     onRepeatDelete: settings.holdToDeleteEnabled ? onRepeatDelete : nil
                 )
             }

@@ -1,0 +1,6 @@
+.DS_Store
+presentation/frames/
+presentation/.render-*/
+*.xcuserstate
+presentation/assets/*.png
+presentation/preview/
